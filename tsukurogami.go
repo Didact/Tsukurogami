@@ -7,7 +7,12 @@ import (
 	"flag"
 	"net/http"
 	"strings"
+	"errors"
 	"encoding/base64"
+	"encoding/json"
+	"path"
+	"io/ioutil"
+	"net/url"
 )
 
 // flags
@@ -33,6 +38,55 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	auth := fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(t.creds)))
 	req.Header.Add("Authorization", auth)
 	return t.Transport.RoundTrip(req)
+}
+
+type Trigger struct {
+	Phase int `json:"phase"`
+	Body string `json:"body"`
+	Name string `json:"name"`
+	Type int `json:"type"`
+	Conditions interface{} `json:"conditions"`
+}
+
+type Bot struct {
+	Name string `json:"name"`
+	Config Configuration `json:"configuration"`
+}
+
+type Configuration struct {
+	m map[string]json.RawMessage
+	triggers []Trigger
+	envVars map[string]interface{}
+}
+
+func (c Configuration) MarshalJSON() ([]byte, error) {
+	triggerJSON, err := json.Marshal(c.triggers)
+	if err != nil {
+		return nil, err
+	}
+	envJSON, err := json.Marshal(c.envVars)
+	if err != nil {
+		return nil, err
+	}
+	c.m["triggers"] = triggerJSON
+	c.m["buildEnvironmentVariables"] = envJSON
+	return json.Marshal(c.m)
+}
+
+func (c *Configuration) UnmarshalJSON(b []byte) error {
+	if err := json.Unmarshal(b, &c.m); err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(c.m["triggers"], &c.triggers); err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(c.m["buildEnvironmentVariables"], &c.envVars); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +129,52 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
 }
 
 func createBot(repo, branch string) error {
+	templateName := *template
+	if templateName == "$REPO_NAME.continuous" {
+		templateName = repo + ".continuous"
+	}
+
+	var botList struct {
+		Count int `json:"count"`
+		Results []Bot `json:"results"`
+	}
+
+	url, err := url.Parse(*xcodeURL)
+	if err != nil {
+		return err
+	}
+
+	url.Path = path.Join(path.Join(url.Path, "api"), "bots")
+
+	resp, err := client.Get(url.String())
+	if err != nil {
+		return err
+	}
+	if resp.Body == nil {
+		return errors.New("no response")
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(body, &botList)
+
+	if botList.Count == 0 {
+		return errors.New("no bots")
+	}
+
+	var templateBot *Bot
+	for _, bot := range botList.Results {
+		if bot.Name == templateName {
+			templateBot = &bot
+			break
+		}
+	}
+
+	_ = templateBot
+
 	return nil
 }
 
@@ -85,6 +185,8 @@ func deleteBot(repo, branch string) error {
 func main() {
 	flag.Parse()
 	client = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
+
+	createBot("iasmonitoring.ios10", "test")
 
 	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
