@@ -54,7 +54,7 @@ type Bot struct {
 }
 
 type Configuration struct {
-	m        map[string]json.RawMessage
+	m        map[string]*json.RawMessage
 	triggers []Trigger
 	envVars  map[string]interface{}
 }
@@ -68,8 +68,10 @@ func (c Configuration) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.m["triggers"] = triggerJSON
-	c.m["buildEnvironmentVariables"] = envJSON
+	t := json.RawMessage(triggerJSON)
+	e := json.RawMessage(envJSON)
+	c.m["triggers"] = &t
+	c.m["buildEnvironmentVariables"] = &e
 	return json.Marshal(c.m)
 }
 
@@ -78,11 +80,11 @@ func (c *Configuration) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := json.Unmarshal(c.m["triggers"], &c.triggers); err != nil {
+	if err := json.Unmarshal(*c.m["triggers"], &c.triggers); err != nil {
 		return err
 	}
 
-	if err := json.Unmarshal(c.m["buildEnvironmentVariables"], &c.envVars); err != nil {
+	if err := json.Unmarshal(*c.m["buildEnvironmentVariables"], &c.envVars); err != nil {
 		return err
 	}
 
