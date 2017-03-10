@@ -198,7 +198,7 @@ func createBot(repo, branch string) error {
 	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Test", Body: `#!/bin/sh
 		echo "hello, world"`})
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
-	templateBot.Name = "ignore"
+	templateBot.Name = templateBot.Name + "." + branch
 	templateBot.ID = ""
 
 	newJSON, err := json.Marshal(templateBot)
