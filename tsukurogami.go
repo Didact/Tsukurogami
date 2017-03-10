@@ -46,23 +46,7 @@ type Trigger struct {
 	Body       string `json:"scriptBody,omitempty"`
 	Name       string `json:"name"`
 	Type       int    `json:"type"`
-	EmailConfiguration struct {
-		CCAddresses []string `json:"ccAddresses"`
-		AllowedDomainNames []string `json:"allowedDomainNames"`
-		IncludeCommitMessages bool `json:"includeCommitMessages"`
-		IncludeLogs bool `json:"includeLogs"`
-		ReplyToAddress string `json:"replyToAddress"`
-		IncludeIssueDetails bool `json:"includeIssueDetails"`
-		IncludeBotConfiguration bool `json:"includeBotConfiguration"`
-		AdditionalRecipients []string `json:"additionalRecipients"`
-		SCMOptions map[string]int `json:"scmOptions"`
-		EmailCommitters bool `json:"emailCommitters"`
-		FromAddress string `json:"fromAddress"`
-		Type int `json:"type"`
-		WeeklyScheduleDay Day `json:"weeklyScheduleDay"`
-		MinutesAfterHour int `json:"minutesAfterHour"`
-		Hour int `json:"hour"`
-	} `json:"emailConfiguration,omitempty"`
+	EmailConfiguration *json.RawMessage `json:"emailConfiguration,omitempty"`
 	Conditions struct {
 		OnAnalyzerWarnings bool `json:"onAnalyzerWarnings"`
 		OnBuildErrors      bool `json:"onBuildErrors"`
