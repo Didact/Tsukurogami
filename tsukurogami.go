@@ -1,30 +1,30 @@
 package main
 
 import (
-	"log"
-	"fmt"
 	"crypto/tls"
-	"flag"
-	"net/http"
-	"strings"
-	"errors"
 	"encoding/base64"
 	"encoding/json"
-	"path"
+	"errors"
+	"flag"
+	"fmt"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"net/url"
+	"path"
+	"strings"
 )
 
 // flags
 var (
-	xcodeURL = flag.String("xcode-url", "", "The url of your xcode server")
-	bitbucketURL = flag.String("bitbucket-url", "", "The url of your bitbucket server")
-	xcodeCredentials = flag.String("xcode-credentials", "", "The credentials for your xcode server. username:password")
+	xcodeURL             = flag.String("xcode-url", "", "The url of your xcode server")
+	bitbucketURL         = flag.String("bitbucket-url", "", "The url of your bitbucket server")
+	xcodeCredentials     = flag.String("xcode-credentials", "", "The credentials for your xcode server. username:password")
 	bitbucketCredentials = flag.String("bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
-	port = flag.Int("port", 4444, "The port to listen on")
+	port                 = flag.Int("port", 4444, "The port to listen on")
 	// configFilePath = flag.String("config", "", "(Optional) Path to configuration file")
 	skipVerify = flag.Bool("skip-verify", true, "Skip certification verification on the xcode server")
-	template = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
+	template   = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
 )
 
 var client *http.Client
@@ -41,22 +41,22 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type Trigger struct {
-	Phase int `json:"phase"`
-	Body string `json:"body"`
-	Name string `json:"name"`
-	Type int `json:"type"`
+	Phase      int         `json:"phase"`
+	Body       string      `json:"body"`
+	Name       string      `json:"name"`
+	Type       int         `json:"type"`
 	Conditions interface{} `json:"conditions"`
 }
 
 type Bot struct {
-	Name string `json:"name"`
+	Name   string        `json:"name"`
 	Config Configuration `json:"configuration"`
 }
 
 type Configuration struct {
-	m map[string]json.RawMessage
+	m        map[string]json.RawMessage
 	triggers []Trigger
-	envVars map[string]interface{}
+	envVars  map[string]interface{}
 }
 
 func (c Configuration) MarshalJSON() ([]byte, error) {
@@ -135,7 +135,7 @@ func createBot(repo, branch string) error {
 	}
 
 	var botList struct {
-		Count int `json:"count"`
+		Count   int   `json:"count"`
 		Results []Bot `json:"results"`
 	}
 
@@ -172,8 +172,6 @@ func createBot(repo, branch string) error {
 			break
 		}
 	}
-
-	_ = templateBot
 
 	return nil
 }
