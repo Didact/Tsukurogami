@@ -125,13 +125,17 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
 
 	switch strings.ToLower(status[0]) {
 	case "opened", "reopened":
-		err := createBot(repo[0], branch[0])
-		w.WriteHeader(500)
-		fmt.Fprintf(w, "error creating bot: %s\n", err)
+		if err := createBot(repo[0], branch[0]); err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(w, "error creating bot: %s\n", err)
+			return 
+		}
 	case "closed", "declined":
-		err := deleteBot(repo[0], branch[0])
-		w.WriteHeader(500)
-		fmt.Fprintf(w, "error deleting bot: %s\n", err)
+		if err := deleteBot(repo[0], branch[0]); err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(w, "error deleting bot: %s\n", err)
+			return
+		}
 	default:
 		// nop
 	}
