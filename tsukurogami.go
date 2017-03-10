@@ -16,6 +16,14 @@ import (
 	"strings"
 )
 
+var switchBranch = `
+#!/bin/sh
+cd ${XCS_PRIMARY_REPO_DIR}
+git fetch
+git checkout %s
+git pull # for good measure
+`
+
 // flags
 var (
 	xcodeURL             = flag.String("xcode-url", "", "The url of your xcode server")
@@ -195,8 +203,7 @@ func createBot(repo, branch string) error {
 
 	id := templateBot.ID
 
-	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Test", Body: `#!/bin/sh
-		echo "hello, world"`})
+	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)})
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = templateBot.Name + "." + branch
 	templateBot.ID = ""
