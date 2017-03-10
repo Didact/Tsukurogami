@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 )
@@ -41,14 +44,22 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type Trigger struct {
-	Phase      int         `json:"phase"`
-	Body       string      `json:"body"`
-	Name       string      `json:"name"`
-	Type       int         `json:"type"`
-	Conditions interface{} `json:"conditions"`
+	Phase      int    `json:"phase"`
+	Body       string `json:"scriptBody,omitempty"`
+	Name       string `json:"name"`
+	Type       int    `json:"type"`
+	Conditions struct {
+		OnAnalyzerWarnings bool `json:"onAnalyzerWarnings"`
+		OnBuildErrors      bool `json:"onBuildErrors"`
+		OnFailingTests     bool `json:"onFailingTests"`
+		OnSuccess          bool `json:"onSuccess"`
+		OnWarnings         bool `json:"onWarnings"`
+		Status             int  `json:"status"`
+	} `json:"conditions,omitempty"`
 }
 
 type Bot struct {
+	ID     string        `json:"_id,omitempty"`
 	Name   string        `json:"name"`
 	Config Configuration `json:"configuration"`
 }
@@ -141,14 +152,14 @@ func createBot(repo, branch string) error {
 		Results []Bot `json:"results"`
 	}
 
-	url, err := url.Parse(*xcodeURL)
+	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
 		return err
 	}
 
-	url.Path = path.Join(path.Join(url.Path, "api"), "bots")
+	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
-	resp, err := client.Get(url.String())
+	resp, err := client.Get(botsURL.String())
 	if err != nil {
 		return err
 	}
@@ -175,6 +186,29 @@ func createBot(repo, branch string) error {
 		}
 	}
 
+	if templateBot == nil {
+		return errors.New("couldn't find template bot")
+	}
+
+	id := templateBot.ID
+
+	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Test", Body: `#!/bin/sh
+		echo "hello, world"`})
+	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
+	templateBot.Name = "ignore"
+	templateBot.ID = ""
+
+	newJSON, err := json.Marshal(templateBot)
+
+	if err != nil {
+		return err
+	}
+
+	resp, err = client.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -185,8 +219,6 @@ func deleteBot(repo, branch string) error {
 func main() {
 	flag.Parse()
 	client = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
-
-	createBot("iasmonitoring.ios10", "test")
 
 	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
