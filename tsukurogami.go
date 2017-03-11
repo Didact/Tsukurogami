@@ -24,6 +24,14 @@ git checkout %s
 git pull # for good measure
 `
 
+var pokeStatus = `
+#!/bin/sh
+set -x
+cd ${XCS_PRIMARY_REPO_DIR}
+# TODO: Replace IP
+curl "192.168.200.238:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
+`
+
 // flags
 var (
 	xcodeURL             = flag.String("xcode-url", "", "The url of your xcode server")
@@ -36,7 +44,8 @@ var (
 	template   = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
 )
 
-var client *http.Client
+var xcodeClient *http.Client
+var bitbucketClient *http.Client
 
 type transport struct {
 	http.Transport
@@ -137,7 +146,7 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
 		if err := createBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(w, "error creating bot: %s\n", err)
-			return 
+			return
 		}
 	case "closed", "declined":
 		if err := deleteBot(repo[0], branch[0]); err != nil {
@@ -150,6 +159,79 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(201)
+}
+
+func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
+	success := false
+	defer func() {
+		if success {
+			w.WriteHeader(200)
+		} else {
+			w.WriteHeader(500)
+		}
+	}()
+	commit, ok := r.URL.Query()["commit"]
+	if !ok || len(commit) < 1 {
+		log.Fatal("no commit")
+		return
+	}
+	status, ok := r.URL.Query()["status"]
+	if !ok || len(status) < 1 {
+		log.Fatal("no status")
+		return
+	}
+	bot, ok := r.URL.Query()["bot"]
+	if !ok || len(bot) < 1 {
+		log.Fatal("no bot")
+		return
+	}
+
+	integration, ok := r.URL.Query()["integration"]
+	if !ok || len(integration) < 1 {
+		log.Fatal("no integration")
+		return
+	}
+
+	var state struct {
+		State string `json:"state"`
+		Key   string `json:"key"`
+		Name  string `json:"name,omitempty"`
+		URL   string `json:"url"`
+		Desc  string `json:"description,omitempty"`
+	}
+
+	switch strings.ToLower(status[0]) {
+	case "inprogress":
+		state.State = "INPROGRESS"
+	case "succeeded", "warnings":
+		state.State = "SUCCESSFUL"
+	case "trigger-error", "internal-build-error", "build-errors":
+		state.State = "FAILED"
+	default:
+		state.State = "FAILED"
+		state.Desc = "xcode returned: " + status[0]
+	}
+	state.Key = bot[0]
+	state.Name = state.Key + ":" + integration[0]
+	state.URL = "http://example.com/" // dunno what to do with this yet
+
+	b, err := json.Marshal(state)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	url, err := url.Parse(*bitbucketURL)
+	if err != nil {
+		return
+	}
+	url.Path = path.Join(path.Join(url.Path, "rest/build-status/1.0/commits/"), commit[0])
+	resp, err := bitbucketClient.Post(url.String(), "application/json", bytes.NewReader(b))
+	if err != nil {
+		log.Fatal(err)
+	}
+	resp.Body.Close()
+	success = true
 }
 
 func createBot(repo, branch string) error {
@@ -170,7 +252,7 @@ func createBot(repo, branch string) error {
 
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
-	resp, err := client.Get(botsURL.String())
+	resp, err := xcodeClient.Get(botsURL.String())
 	if err != nil {
 		return err
 	}
@@ -203,7 +285,7 @@ func createBot(repo, branch string) error {
 
 	id := templateBot.ID
 
-	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)})
+	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)}, Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "inprogress")})
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = templateBot.Name + "." + branch
 	templateBot.ID = ""
@@ -214,7 +296,7 @@ func createBot(repo, branch string) error {
 		return err
 	}
 
-	resp, err = client.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
+	resp, err = xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
 	if err != nil {
 		return err
 	}
@@ -228,8 +310,10 @@ func deleteBot(repo, branch string) error {
 
 func main() {
 	flag.Parse()
-	client = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
+	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
+	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 
 	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
+	http.HandleFunc("/integrationUpdated", handleIntegrationUpdated)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
