@@ -291,7 +291,20 @@ func createBot(repo, branch string) error {
 
 	id := templateBot.ID
 
-	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)}, Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "inprogress")})
+	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "inprogress")}
+	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "${XCS_INTEGRATION_RESULT}")}
+	postPoke.Conditions.OnWarnings = true
+	postPoke.Conditions.OnSuccess = true
+	postPoke.Conditions.OnFailingTests = true
+	postPoke.Conditions.OnBuildErrors = true
+	postPoke.Conditions.OnWarnings = true
+	postPoke.Conditions.OnAnalyzerWarnings = true
+
+	templateBot.Config.triggers = append(templateBot.Config.triggers, []Trigger{
+		Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)}, 
+		prePoke,
+		postPoke,
+		}...)
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
