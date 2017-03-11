@@ -148,6 +148,11 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "error creating bot: %s\n", err)
 			return
 		}
+		if err := integrateBot(repo[0], branch[0]); err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(w, "error integrating newly created bot: %s\n", err)
+			return
+		}
 	case "closed", "declined":
 		if err := deleteBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
@@ -240,12 +245,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 	success = true
 }
 
-func createBot(repo, branch string) error {
-	templateName := *template
-	if templateName == "$REPO_NAME.continuous" {
-		templateName = repo + ".continuous"
-	}
-
+func getBot(name string) (*Bot, error) {
 	var botList struct {
 		Count   int   `json:"count"`
 		Results []Bot `json:"results"`
@@ -253,40 +253,60 @@ func createBot(repo, branch string) error {
 
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
 	resp, err := xcodeClient.Get(botsURL.String())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.Body == nil {
-		return errors.New("no response")
+		return nil, errors.New("no response")
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = json.Unmarshal(body, &botList)
 
 	if botList.Count == 0 {
-		return errors.New("no bots")
+		return nil, errors.New("no bots")
 	}
 
-	var templateBot *Bot
+	var b *Bot
 	for _, bot := range botList.Results {
-		if bot.Name == templateName {
-			templateBot = &bot
+		if bot.Name == name {
+			b = &bot
 			break
 		}
 	}
 
-	if templateBot == nil {
-		return errors.New("couldn't find template bot")
+	if b == nil {
+		return nil, errors.New("couldn't find template bot")
+	}
+
+	return b, nil
+}
+
+func createBot(repo, branch string) error {
+	templateName := *template
+	if templateName == "$REPO_NAME.continuous" {
+		templateName = repo + ".continuous"
+	}
+
+	botsURL, err := url.Parse(*xcodeURL)
+	if err != nil {
+		return err
+	}
+	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
+
+	templateBot, err := getBot(templateName)
+	if err != nil {
+		return err
 	}
 
 	id := templateBot.ID
@@ -301,10 +321,10 @@ func createBot(repo, branch string) error {
 	postPoke.Conditions.OnAnalyzerWarnings = true
 
 	templateBot.Config.triggers = append(templateBot.Config.triggers, []Trigger{
-		Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)}, 
+		Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)},
 		prePoke,
 		postPoke,
-		}...)
+	}...)
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
@@ -315,10 +335,12 @@ func createBot(repo, branch string) error {
 		return err
 	}
 
-	resp, err = xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
+	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
 	if err != nil {
 		return err
 	}
+
+	_ = resp
 
 	return nil
 }
@@ -328,6 +350,20 @@ func deleteBot(repo, branch string) error {
 }
 
 func integrateBot(repo, branch string) error {
+	bot, err := getBot(repo + "." + branch)
+	if err != nil {
+		return err
+	}
+	botsURL, err := url.Parse(*xcodeURL)
+	if err != nil {
+		return err
+	}
+	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
+	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": true}`))
+	if err != nil {
+		return err
+	}
+	fmt.Println(resp.StatusCode)
 	return nil
 }
 
