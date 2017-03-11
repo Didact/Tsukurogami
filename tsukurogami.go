@@ -319,11 +319,11 @@ func createBot(repo, branch string) error {
 	postPoke.Conditions.OnWarnings = true
 	postPoke.Conditions.OnAnalyzerWarnings = true
 
-	templateBot.Config.triggers = append(templateBot.Config.triggers, []Trigger{
+	templateBot.Config.triggers = append([]Trigger{
 		Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)},
 		prePoke,
 		postPoke,
-	}...)
+	}, templateBot.Config.triggers...)
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
