@@ -59,12 +59,12 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type Trigger struct {
-	Phase      int    `json:"phase"`
-	Body       string `json:"scriptBody,omitempty"`
-	Name       string `json:"name"`
-	Type       int    `json:"type"`
+	Phase              int              `json:"phase"`
+	Body               string           `json:"scriptBody,omitempty"`
+	Name               string           `json:"name"`
+	Type               int              `json:"type"`
 	EmailConfiguration *json.RawMessage `json:"emailConfiguration,omitempty"`
-	Conditions struct {
+	Conditions         struct {
 		OnAnalyzerWarnings bool `json:"onAnalyzerWarnings"`
 		OnBuildErrors      bool `json:"onBuildErrors"`
 		OnFailingTests     bool `json:"onFailingTests"`
