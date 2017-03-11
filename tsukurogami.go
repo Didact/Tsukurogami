@@ -287,7 +287,7 @@ func createBot(repo, branch string) error {
 
 	templateBot.Config.triggers = append(templateBot.Config.triggers, Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)}, Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "inprogress")})
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
-	templateBot.Name = templateBot.Name + "." + branch
+	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
 
 	newJSON, err := json.Marshal(templateBot)
