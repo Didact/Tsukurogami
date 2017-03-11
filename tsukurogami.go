@@ -279,7 +279,7 @@ func getBot(name string) (*Bot, error) {
 
 	var b *Bot
 	for _, bot := range botList.Results {
-		if bot.Name == name {
+		if strings.ToLower(bot.Name) == strings.ToLower(name) {
 			b = &bot
 			break
 		}
