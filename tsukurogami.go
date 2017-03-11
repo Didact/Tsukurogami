@@ -346,6 +346,29 @@ func createBot(repo, branch string) error {
 }
 
 func deleteBot(repo, branch string) error {
+	botsURL, err := url.Parse(*xcodeURL)
+	if err != nil {
+		return err
+	}
+	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
+	b, err := getBot(repo + "." + branch)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", botsURL.String(), b.ID), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := xcodeClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != 204 {
+		return errors.New("failed to delete")
+	}
+
 	return nil
 }
 
