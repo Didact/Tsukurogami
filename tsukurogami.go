@@ -183,23 +183,23 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 	}()
 	commit, ok := r.URL.Query()["commit"]
 	if !ok || len(commit) < 1 {
-		log.Fatal("no commit")
+		log.Println("no commit")
 		return
 	}
 	status, ok := r.URL.Query()["status"]
 	if !ok || len(status) < 1 {
-		log.Fatal("no status")
+		log.Println("no status")
 		return
 	}
 	bot, ok := r.URL.Query()["bot"]
 	if !ok || len(bot) < 1 {
-		log.Fatal("no bot")
+		log.Println("no bot")
 		return
 	}
 
 	integration, ok := r.URL.Query()["integration"]
 	if !ok || len(integration) < 1 {
-		log.Fatal("no integration")
+		log.Println("no integration")
 		return
 	}
 
@@ -228,7 +228,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(state)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return
 	}
 
@@ -239,7 +239,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 	url.Path = path.Join(path.Join(url.Path, "rest/build-status/1.0/commits/"), commit[0])
 	resp, err := bitbucketClient.Post(url.String(), "application/json", bytes.NewReader(b))
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 	resp.Body.Close()
 	success = true
@@ -374,5 +374,5 @@ func main() {
 
 	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
 	http.HandleFunc("/integrationUpdated", handleIntegrationUpdated)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
