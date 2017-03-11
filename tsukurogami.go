@@ -39,9 +39,8 @@ var (
 	xcodeCredentials     = flag.String("xcode-credentials", "", "The credentials for your xcode server. username:password")
 	bitbucketCredentials = flag.String("bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
 	port                 = flag.Int("port", 4444, "The port to listen on")
-	// configFilePath = flag.String("config", "", "(Optional) Path to configuration file")
-	skipVerify = flag.Bool("skip-verify", true, "Skip certification verification on the xcode server")
-	template   = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
+	skipVerify           = flag.Bool("skip-verify", true, "Skip certification verification on the xcode server")
+	template             = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
 )
 
 var xcodeClient *http.Client
