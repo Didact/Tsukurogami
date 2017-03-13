@@ -47,7 +47,7 @@ var xcodeClient *http.Client
 var bitbucketClient *http.Client
 
 type transport struct {
-	http.Transport
+	*http.Transport
 	creds string
 }
 
@@ -394,8 +394,8 @@ func integrateBot(repo, branch string) error {
 
 func main() {
 	flag.Parse()
-	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
-	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
+	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
+	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 
 	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
 	http.HandleFunc("/integrationUpdated", handleIntegrationUpdated)
