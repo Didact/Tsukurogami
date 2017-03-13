@@ -470,7 +470,7 @@ func verifyConfig() bool {
 }
 
 func init() {
-	flag.StringVar(&config.xcodeURL, "xcode-url", "http://localhost:20343", "The url of your xcode server")
+	flag.StringVar(&config.xcodeURL, "xcode-url", "https://localhost:20343", "The url of your xcode server")
 	flag.StringVar(&config.bitbucketURL, "bitbucket-url", "", "The url of your bitbucket server")
 	flag.StringVar(&config.xcodeCredentials, "xcode-credentials", "", "The credentials for your xcode server. username:password")
 	flag.StringVar(&config.bitbucketCredentials, "bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
