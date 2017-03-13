@@ -54,6 +54,10 @@ type transport struct {
 	creds string
 }
 
+func newTransport(creds string, skipVerify bool) transport {
+	return transport{creds: creds, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}}
+}
+
 func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	auth := fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(t.creds)))
 	req.Header.Add("Authorization", auth)
@@ -85,6 +89,7 @@ type Bot struct {
 type Configuration struct {
 	m            map[string]*json.RawMessage
 	triggers     []Trigger
+	envVars      map[string]interface{}
 	scheduleType int
 }
 
@@ -455,12 +460,30 @@ func integrateBot(repo, branch string) error {
 	return nil
 }
 
+func verifyFlags() bool {
+	switch {
+	case *xcodeCredentials == "":
+		fallthrough
+	case *bitbucketCredentials == "":
+		fallthrough
+	case *bitbucketURL == "":
+		return false
+	default:
+		return true
+	}
+
+}
+
 func main() {
 	flag.Parse()
+	if !verifyFlags() {
+		flag.Usage()
+	}
+	xcodeClient = &http.Client{Transport: newTransport(*xcodeCredentials, *skipVerify)}
+	bitbucketClient = &http.Client{Transport: newTransport(*bitbucketCredentials, *skipVerify)}
+
 	l := &logger{&sync.Mutex{}, [][]byte{}}
 	log.SetOutput(io.MultiWriter(os.Stdout, l))
-	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
-	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 
 	http.Handle("/pullRequestUpdated", errorHandler(handlePullRequestUpdated))
 	http.Handle("/integrationUpdated", errorHandler(handleIntegrationUpdated))
