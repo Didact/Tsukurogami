@@ -440,7 +440,9 @@ func integrateBot(repo, branch string) error {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
-	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": true}`))
+
+	// downloading sources takes forever with shouldClean: true imo
+	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": false}`))
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
