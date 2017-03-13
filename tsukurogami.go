@@ -35,16 +35,14 @@ cd ${XCS_PRIMARY_REPO_DIR}
 curl "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
 `
 
-// flags
-var (
-	xcodeURL             = flag.String("xcode-url", "https://localhost:20343/", "The url of your xcode server")
-	bitbucketURL         = flag.String("bitbucket-url", "", "The url of your bitbucket server")
-	xcodeCredentials     = flag.String("xcode-credentials", "", "The credentials for your xcode server. username:password")
-	bitbucketCredentials = flag.String("bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
-	port                 = flag.Int("port", 4444, "The port to listen on")
-	skipVerify           = flag.Bool("skip-verify", true, "Skip certification verification on the xcode server")
-	template             = flag.String("template", "$REPO_NAME.continuous", "The bot from which settings should be copied")
-)
+var config struct {
+	xcodeURL             string
+	bitbucketURL         string
+	xcodeCredentials     string
+	bitbucketCredentials string
+	port                 int
+	skipVerify           bool
+}
 
 var xcodeClient *http.Client
 var bitbucketClient *http.Client
@@ -287,7 +285,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
 
-	url, err := url.Parse(*bitbucketURL)
+	url, err := url.Parse(config.bitbucketURL)
 	if err != nil {
 		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
@@ -307,7 +305,7 @@ func getBot(name string) (*Bot, error) {
 		Results []Bot `json:"results"`
 	}
 
-	botsURL, err := url.Parse(*xcodeURL)
+	botsURL, err := url.Parse(config.xcodeURL)
 	if err != nil {
 		return nil, fmt.Errorf("getBot: %s", err)
 	}
@@ -351,12 +349,9 @@ func getBot(name string) (*Bot, error) {
 }
 
 func createBot(repo, branch string) error {
-	templateName := *template
-	if templateName == "$REPO_NAME.continuous" {
-		templateName = repo + ".continuous"
-	}
+	templateName := repo + ".continuous"
 
-	botsURL, err := url.Parse(*xcodeURL)
+	botsURL, err := url.Parse(config.xcodeURL)
 	if err != nil {
 		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
@@ -369,8 +364,8 @@ func createBot(repo, branch string) error {
 
 	id := templateBot.ID
 
-	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *xcodeURL, *port, "inprogress")}
-	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *xcodeURL, *port, "${XCS_INTEGRATION_RESULT}")}
+	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.xcodeURL, config.port, "inprogress")}
+	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.xcodeURL, config.port, "${XCS_INTEGRATION_RESULT}")}
 	postPoke.Conditions.OnWarnings = true
 	postPoke.Conditions.OnSuccess = true
 	postPoke.Conditions.OnFailingTests = true
@@ -409,7 +404,7 @@ func createBot(repo, branch string) error {
 }
 
 func deleteBot(repo, branch string) error {
-	botsURL, err := url.Parse(*xcodeURL)
+	botsURL, err := url.Parse(config.xcodeURL)
 	if err != nil {
 		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
@@ -442,7 +437,7 @@ func integrateBot(repo, branch string) error {
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
-	botsURL, err := url.Parse(*xcodeURL)
+	botsURL, err := url.Parse(config.xcodeURL)
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
@@ -460,13 +455,13 @@ func integrateBot(repo, branch string) error {
 	return nil
 }
 
-func verifyFlags() bool {
+func verifyConfig() bool {
 	switch {
-	case *xcodeCredentials == "":
+	case config.xcodeCredentials == "":
 		fallthrough
-	case *bitbucketCredentials == "":
+	case config.bitbucketCredentials == "":
 		fallthrough
-	case *bitbucketURL == "":
+	case config.bitbucketURL == "":
 		return false
 	default:
 		return true
@@ -474,13 +469,23 @@ func verifyFlags() bool {
 
 }
 
+func init() {
+	flag.StringVar(&config.xcodeURL, "xcode-url", "http://localhost:20343", "The url of your xcode server")
+	flag.StringVar(&config.bitbucketURL, "bitbucket-url", "", "The url of your bitbucket server")
+	flag.StringVar(&config.xcodeCredentials, "xcode-credentials", "", "The credentials for your xcode server. username:password")
+	flag.StringVar(&config.bitbucketCredentials, "bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
+	flag.IntVar(&config.port, "port", 4444, "The port to listen on")
+	flag.BoolVar(&config.skipVerify, "skip-verify", true, "Skip certification verification on the xcode server")
+}
+
 func main() {
 	flag.Parse()
-	if !verifyFlags() {
+	if !verifyConfig() {
 		flag.Usage()
+		os.Exit(0)
 	}
-	xcodeClient = &http.Client{Transport: newTransport(*xcodeCredentials, *skipVerify)}
-	bitbucketClient = &http.Client{Transport: newTransport(*bitbucketCredentials, *skipVerify)}
+	xcodeClient = &http.Client{Transport: newTransport(config.xcodeCredentials, config.skipVerify)}
+	bitbucketClient = &http.Client{Transport: newTransport(config.bitbucketCredentials, config.skipVerify)}
 
 	l := &logger{&sync.Mutex{}, [][]byte{}}
 	log.SetOutput(io.MultiWriter(os.Stdout, l))
@@ -488,5 +493,5 @@ func main() {
 	http.Handle("/pullRequestUpdated", errorHandler(handlePullRequestUpdated))
 	http.Handle("/integrationUpdated", errorHandler(handleIntegrationUpdated))
 	http.Handle("/logs", l)
-	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", config.port), nil))
 }
