@@ -83,9 +83,8 @@ type Bot struct {
 }
 
 type Configuration struct {
-	m        map[string]*json.RawMessage
-	triggers []Trigger
-	envVars  map[string]interface{}
+	m            map[string]*json.RawMessage
+	triggers     []Trigger
 	scheduleType int
 }
 
@@ -98,7 +97,7 @@ func (c Configuration) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	scheduleJSON = json.Marshal(c.scheduleType)
+	scheduleJSON, err := json.Marshal(c.scheduleType)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +382,7 @@ func createBot(repo, branch string) error {
 	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
 
-	templateBot.Configuration.scheduleType = 3
+	templateBot.Config.scheduleType = 3
 
 	newJSON, err := json.Marshal(templateBot)
 	if err != nil {
