@@ -8,12 +8,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 var switchBranch = `
@@ -115,6 +118,30 @@ func (c *Configuration) UnmarshalJSON(b []byte) error {
 	}
 
 	return nil
+}
+
+type logger struct {
+	m    *sync.Mutex
+	logs [][]byte
+}
+
+func (l *logger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	l.m.Lock()
+	defer l.m.Unlock()
+	for _, b := range l.logs {
+		w.Write(b)
+	}
+}
+
+func (l *logger) write(b []byte) {
+	l.m.Lock()
+	defer l.m.Unlock()
+	l.logs = append(l.logs, b)
+}
+
+func (l *logger) Write(b []byte) (int, error) {
+	go l.write(b)
+	return len(b), nil
 }
 
 type errorHandler func(http.ResponseWriter, *http.Request) error
@@ -413,10 +440,13 @@ func integrateBot(repo, branch string) error {
 
 func main() {
 	flag.Parse()
+	l := &logger{&sync.Mutex{}, [][]byte{}}
+	log.SetOutput(io.MultiWriter(os.Stdout, l))
 	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 
 	http.Handle("/pullRequestUpdated", errorHandler(handlePullRequestUpdated))
 	http.Handle("/integrationUpdated", errorHandler(handleIntegrationUpdated))
+	http.Handle("/logs", l)
 	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
