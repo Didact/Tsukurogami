@@ -86,6 +86,7 @@ type Configuration struct {
 	m        map[string]*json.RawMessage
 	triggers []Trigger
 	envVars  map[string]interface{}
+	scheduleType int
 }
 
 func (c Configuration) MarshalJSON() ([]byte, error) {
@@ -97,10 +98,16 @@ func (c Configuration) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	scheduleJSON = json.Marshal(c.scheduleType)
+	if err != nil {
+		return nil, err
+	}
 	t := json.RawMessage(triggerJSON)
 	e := json.RawMessage(envJSON)
+	s := json.RawMessage(scheduleJSON)
 	c.m["triggers"] = &t
 	c.m["buildEnvironmentVariables"] = &e
+	c.m["scheduleType"] = &s
 	return json.Marshal(c.m)
 }
 
@@ -114,6 +121,10 @@ func (c *Configuration) UnmarshalJSON(b []byte) error {
 	}
 
 	if err := json.Unmarshal(*c.m["buildEnvironmentVariables"], &c.envVars); err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(*c.m["scheduleType"], &c.scheduleType); err != nil {
 		return err
 	}
 
@@ -368,6 +379,8 @@ func createBot(repo, branch string) error {
 	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 	templateBot.Name = repo + "." + branch
 	templateBot.ID = ""
+
+	templateBot.Configuration.scheduleType = 3
 
 	newJSON, err := json.Marshal(templateBot)
 	if err != nil {
