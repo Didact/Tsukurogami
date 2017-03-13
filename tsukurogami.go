@@ -29,12 +29,12 @@ var pokeStatus = `
 set -x
 cd ${XCS_PRIMARY_REPO_DIR}
 # TODO: Replace IP
-curl "192.168.200.238:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
+curl "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
 `
 
 // flags
 var (
-	xcodeURL             = flag.String("xcode-url", "", "The url of your xcode server")
+	xcodeURL             = flag.String("xcode-url", "https://localhost:20343/", "The url of your xcode server")
 	bitbucketURL         = flag.String("bitbucket-url", "", "The url of your bitbucket server")
 	xcodeCredentials     = flag.String("xcode-credentials", "", "The credentials for your xcode server. username:password")
 	bitbucketCredentials = flag.String("bitbucket-credentials", "", "The credentials for your bitbucket server. username:password")
@@ -310,8 +310,8 @@ func createBot(repo, branch string) error {
 
 	id := templateBot.ID
 
-	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "inprogress")}
-	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *port, "${XCS_INTEGRATION_RESULT}")}
+	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *xcodeURL, *port, "inprogress")}
+	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, *xcodeURL, *port, "${XCS_INTEGRATION_RESULT}")}
 	postPoke.Conditions.OnWarnings = true
 	postPoke.Conditions.OnSuccess = true
 	postPoke.Conditions.OnFailingTests = true
