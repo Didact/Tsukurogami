@@ -300,7 +300,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func getBot(name string) (*Bot, error) {
+func getBots() ([]Bot, error) {
 	var botList struct {
 		Count   int   `json:"count"`
 		Results []Bot `json:"results"`
@@ -334,19 +334,38 @@ func getBot(name string) (*Bot, error) {
 		return nil, errors.New("getBot: no bots")
 	}
 
-	var b *Bot
-	for _, bot := range botList.Results {
-		if strings.ToLower(bot.Name) == strings.ToLower(name) {
-			b = &bot
-			break
+	return botList.Results, nil
+}
+
+func getBotsWhere(pred func(*Bot) bool) ([]*Bot, error) {
+	bots, err := getBots()
+	if err != nil {
+		return nil, fmt.Errorf("getBotsWhere: %s", err)
+	}
+	var result []*Bot
+	for i := range bots {
+		if pred(&bots[i]) {
+			result = append(result, &bots[i])
 		}
 	}
+	return result, nil
+}
 
-	if b == nil {
-		return nil, fmt.Errorf("getBot: couldn't find bot named %s", name)
+func getBotNamed(name string) (*Bot, error) {
+
+	bots, err := getBotsWhere(func(b *Bot) bool {
+		return strings.ToLower(b.Name) == strings.ToLower(name)
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("getBotNamed: %s", err)
 	}
 
-	return b, nil
+	if len(bots) < 1 {
+		return nil, fmt.Errorf("getBotNamed %s: no results", name)
+	}
+
+	return bots[0], nil
 }
 
 func createBot(repo, branch string) error {
@@ -358,7 +377,7 @@ func createBot(repo, branch string) error {
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
-	templateBot, err := getBot(templateName)
+	templateBot, err := getBotNamed(templateName)
 	if err != nil {
 		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
@@ -410,7 +429,7 @@ func deleteBot(repo, branch string) error {
 		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
-	b, err := getBot(repo + "." + branch)
+	b, err := getBotNamed(repo + "." + branch)
 	if err != nil {
 		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
@@ -434,7 +453,7 @@ func deleteBot(repo, branch string) error {
 }
 
 func integrateBot(repo, branch string) error {
-	bot, err := getBot(repo + "." + branch)
+	bot, err := getBotNamed(repo + "." + branch)
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
