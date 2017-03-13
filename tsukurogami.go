@@ -369,55 +369,67 @@ func getBotNamed(name string) (*Bot, error) {
 }
 
 func createBot(repo, branch string) error {
-	templateName := repo + ".continuous"
-
 	botsURL, err := url.Parse(config.XcodeURL)
 	if err != nil {
 		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
-	templateBot, err := getBotNamed(templateName)
+	templateBots, err := getBotsWhere(func(b *Bot) bool {
+		r, ok := b.Config.envVars["TSUKUROGAMI_REPO_TEMPLATE"].(string)
+		if !ok {
+			return false
+		}
+		return strings.ToLower(r) == strings.ToLower(repo)
+	})
 	if err != nil {
 		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 
-	id := templateBot.ID
-
-	prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "inprogress")}
-	postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "${XCS_INTEGRATION_RESULT}")}
-	postPoke.Conditions.OnWarnings = true
-	postPoke.Conditions.OnSuccess = true
-	postPoke.Conditions.OnFailingTests = true
-	postPoke.Conditions.OnBuildErrors = true
-	postPoke.Conditions.OnWarnings = true
-	postPoke.Conditions.OnAnalyzerWarnings = true
-
-	templateBot.Config.triggers = append([]Trigger{
-		Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)},
-		prePoke,
-		postPoke,
-	}, templateBot.Config.triggers...)
-	templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
-	templateBot.Name = repo + "." + branch
-	templateBot.ID = ""
-
-	templateBot.Config.scheduleType = 3
-
-	newJSON, err := json.Marshal(templateBot)
-	if err != nil {
-		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
+	if len(templateBots) < 1 {
+		return fmt.Errorf("createBot %s %s: no templates for repo", repo, branch)
 	}
 
-	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
-	if err != nil {
-		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
-	}
+	for _, templateBot := range templateBots {
 
-	defer resp.Body.Close()
+		id := templateBot.ID
 
-	if resp.StatusCode != 201 {
-		return fmt.Errorf("createBot %s %s: RPC failed (code: %d", repo, branch, resp.StatusCode)
+		prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "inprogress")}
+		postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "${XCS_INTEGRATION_RESULT}")}
+		postPoke.Conditions.OnWarnings = true
+		postPoke.Conditions.OnSuccess = true
+		postPoke.Conditions.OnFailingTests = true
+		postPoke.Conditions.OnBuildErrors = true
+		postPoke.Conditions.OnWarnings = true
+		postPoke.Conditions.OnAnalyzerWarnings = true
+
+		templateBot.Config.triggers = append([]Trigger{
+			Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)},
+			prePoke,
+			postPoke,
+		}, templateBot.Config.triggers...)
+		templateBot.Config.envVars["TSUKUROGAMI_REPO"] = repo
+		templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
+		templateBot.Name = templateBot.Name + "." + branch
+		templateBot.ID = ""
+
+		templateBot.Config.scheduleType = 3
+
+		newJSON, err := json.Marshal(templateBot)
+		if err != nil {
+			return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
+		}
+
+		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
+		if err != nil {
+			return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 201 {
+			return fmt.Errorf("createBot %s %s: RPC failed (code: %d", repo, branch, resp.StatusCode)
+		}
 	}
 
 	return nil
@@ -429,48 +441,80 @@ func deleteBot(repo, branch string) error {
 		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
-	b, err := getBotNamed(repo + "." + branch)
-	if err != nil {
-		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
-	}
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", botsURL.String(), b.ID), nil)
+
+	bs, err := getBotsWhere(func(b *Bot) bool {
+		if r, ok := b.Config.envVars["TSUKUROGAMI_REPO"].(string); !ok || (strings.ToLower(r) != strings.ToLower(repo)) {
+			return false
+		}
+		if br, ok := b.Config.envVars["TSUKUROGAMI_BRANCH"].(string); !ok || (strings.ToLower(br) != strings.ToLower(branch)) {
+			return false
+		}
+		return true
+	})
+
 	if err != nil {
 		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 
-	resp, err := xcodeClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
+	if len(bs) < 1 {
+		return fmt.Errorf("deleteBot %s %s: no bots found", repo, err)
 	}
 
-	defer resp.Body.Close()
+	for _, b := range bs {
+		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", botsURL.String(), b.ID), nil)
+		if err != nil {
+			return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
+		}
 
-	if resp.StatusCode != 204 {
-		return fmt.Errorf("deleteBot %s %s: RPC failed (code %d)", repo, branch, resp.StatusCode)
+		resp, err := xcodeClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 204 {
+			return fmt.Errorf("deleteBot %s %s: RPC failed (code %d)", repo, branch, resp.StatusCode)
+		}
 	}
 
 	return nil
 }
 
 func integrateBot(repo, branch string) error {
-	bot, err := getBotNamed(repo + "." + branch)
+	bs, err := getBotsWhere(func(b *Bot) bool {
+		if r, ok := b.Config.envVars["TSUKUROGAMI_REPO"].(string); !ok || (strings.ToLower(r) != strings.ToLower(repo)) {
+			return false
+		}
+		if br, ok := b.Config.envVars["TSUKUROGAMI_BRANCH"].(string); !ok || (strings.ToLower(br) != strings.ToLower(branch)) {
+			return false
+		}
+		return true
+	})
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
+
+	if len(bs) < 1 {
+		return fmt.Errorf("integrateBot %s %s: no bots found", repo, branch)
+	}
+
 	botsURL, err := url.Parse(config.XcodeURL)
 	if err != nil {
 		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
-	// downloading sources takes forever with shouldClean: true imo
-	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": false}`))
-	if err != nil {
-		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 201 {
-		return fmt.Errorf("integrateBot %s %s: RPC failed (code: %d)", repo, branch, resp.StatusCode)
+	for _, b := range bs {
+		// downloading sources takes forever with shouldClean: true imo
+		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), b.ID), "application/json", strings.NewReader(`{"shouldClean": false}`))
+		if err != nil {
+			return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 201 {
+			return fmt.Errorf("integrateBot %s %s: RPC failed (code: %d)", repo, branch, resp.StatusCode)
+		}
 	}
 	return nil
 }
