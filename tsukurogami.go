@@ -151,8 +151,11 @@ func (l *logger) write(b []byte) {
 }
 
 func (l *logger) Write(b []byte) (int, error) {
-	go l.write(b)
-	return len(b), nil
+	b2 := make([]byte, len(b))
+	// Looks like log is reusing its buffer, copy just to be safe
+	copy(b2, b)
+	go l.write(b2)
+	return len(b2), nil
 }
 
 type errorHandler func(http.ResponseWriter, *http.Request) error
