@@ -480,7 +480,7 @@ func init() {
 	flag.StringVar(&config.XcodeCredentials, "xcodeCredentials", "", "The credentials for your xcode server. username:password")
 	flag.StringVar(&config.BitbucketCredentials, "bitbucketCredentials", "", "The credentials for your bitbucket server. username:password")
 	flag.IntVar(&config.Port, "port", 4444, "The port to listen on")
-	flag.BoolVar(&config.SkipVerify, "skipVerify", true, "Skip certification verification on the xcode server")
+	flag.BoolVar(&config.SkipVerify, "skipVerify", true, "Skip certification verification on both servers")
 
 	flag.StringVar(&configPath, "config", "", "If set, the path to the JSON config file used instead of all other command line arguments")
 }
