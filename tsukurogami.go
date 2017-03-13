@@ -117,61 +117,77 @@ func (c *Configuration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) {
+type errorHandler func(http.ResponseWriter, *http.Request) error
+
+func (e errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	err := e(w, r)
+
+	if err == nil {
+		return
+	}
+
+	fmt.Fprintf(w, "%s", err)
+	log.Println(err)
+}
+
+func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) error {
 
 	repo, ok := r.URL.Query()["repo"]
 	if !ok || len(repo) < 1 {
 		w.WriteHeader(400)
-		w.Write([]byte(`missing "repo" parameter`))
-		return
+		return fmt.Errorf(`%s missing "repo" parameter`, r.URL)
 	}
 
 	branch, ok := r.URL.Query()["branch"]
 	if !ok || len(branch) < 1 {
 		w.WriteHeader(400)
-		w.Write([]byte(`missing "branch" parameter`))
-		return
+		return fmt.Errorf(`%s missing "branch" parameter"`, r.URL)
 	}
 
 	status, ok := r.URL.Query()["status"]
 	if !ok || len(status) < 1 {
 		w.WriteHeader(400)
-		w.Write([]byte(`missing "status" parameter`))
-		return
+		return fmt.Errorf(`%s missing "status" parameter`, r.URL)
 	}
 
 	switch strings.ToLower(status[0]) {
 	case "opened", "reopened":
+		log.Printf("creating bot %s %s\n", repo[0], branch[0])
 		if err := createBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(w, "error creating bot: %s\n", err)
-			return
+			return err
 		}
+		log.Printf("successfully created bot %s %s\n", repo[0], branch[0])
+		log.Printf("updating bot %s %s\n", repo[0], branch[0])
 		if err := integrateBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(w, "error integrating newly created bot: %s\n", err)
-			return
+			return err
 		}
+		log.Printf("successfully updated bot %s %s\n", repo[0], branch[0])
 	case "closed", "declined":
+		log.Printf("deleting bot %s %s\n", repo[0], branch[0])
 		if err := deleteBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(w, "error deleting bot: %s\n", err)
-			return
+			return err
 		}
+		log.Printf("successfully deleted bot %s %s\n", repo[0], branch[0])
 	case "rescoped_from":
+		log.Printf("updating bot %s %s", repo[0], branch[0])
 		if err := integrateBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(w, "error integrating bot: %s\n", err)
-			return
+			return err
 		}
+		log.Printf("successfully updated bot %s %s\n", repo[0], branch[0])
 	default:
 		// nop
+		return fmt.Errorf("unknown status: %s\n", status[0])
 	}
 
 	w.WriteHeader(201)
+	return nil
 }
 
-func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
+func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	success := false
 	defer func() {
 		if success {
@@ -182,24 +198,20 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 	}()
 	commit, ok := r.URL.Query()["commit"]
 	if !ok || len(commit) < 1 {
-		log.Println("no commit")
-		return
+		return fmt.Errorf(`%s no "commit" parameter`, r.URL)
 	}
 	status, ok := r.URL.Query()["status"]
 	if !ok || len(status) < 1 {
-		log.Println("no status")
-		return
+		return fmt.Errorf(`%s no "status" parameter`, r.URL)
 	}
 	bot, ok := r.URL.Query()["bot"]
 	if !ok || len(bot) < 1 {
-		log.Println("no bot")
-		return
+		return fmt.Errorf(`%s no "bot" parameter`, r.URL)
 	}
 
 	integration, ok := r.URL.Query()["integration"]
 	if !ok || len(integration) < 1 {
-		log.Println("no integration")
-		return
+		return fmt.Errorf(`%s no "integration" parameter`, r.URL)
 	}
 
 	var state struct {
@@ -227,21 +239,21 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(state)
 	if err != nil {
-		log.Println(err)
-		return
+		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
 
 	url, err := url.Parse(*bitbucketURL)
 	if err != nil {
-		return
+		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
 	url.Path = path.Join(path.Join(url.Path, "rest/build-status/1.0/commits/"), commit[0])
 	resp, err := bitbucketClient.Post(url.String(), "application/json", bytes.NewReader(b))
 	if err != nil {
-		log.Println(err)
+		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
 	resp.Body.Close()
 	success = true
+	return nil
 }
 
 func getBot(name string) (*Bot, error) {
@@ -252,22 +264,24 @@ func getBot(name string) (*Bot, error) {
 
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return nil, fmt.Errorf("getBot: %s", name, err)
+		return nil, fmt.Errorf("getBot: %s", err)
 	}
 
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
 	resp, err := xcodeClient.Get(botsURL.String())
 	if err != nil {
-		return nil, fmt.Errof("getBot: %s", err)
+		return nil, fmt.Errorf("getBot: %s", err)
 	}
 	if resp.Body == nil {
 		return nil, fmt.Errorf("getBot: no response from server")
 	}
 
+	defer resp.Body.Close()
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("getBot: %s")
+		return nil, fmt.Errorf("getBot: %s", err)
 	}
 
 	err = json.Unmarshal(body, &botList)
@@ -285,7 +299,7 @@ func getBot(name string) (*Bot, error) {
 	}
 
 	if b == nil {
-		return nil, fmt.Errof("getBot: couldn't find bot named %s", name)
+		return nil, fmt.Errorf("getBot: couldn't find bot named %s", name)
 	}
 
 	return b, nil
@@ -305,7 +319,7 @@ func createBot(repo, branch string) error {
 
 	templateBot, err := getBot(templateName)
 	if err != nil {
-		return fmt.Errof("createBot %s %s: %s", repo, branch, err)
+		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 
 	id := templateBot.ID
@@ -338,6 +352,8 @@ func createBot(repo, branch string) error {
 		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 
+	defer resp.Body.Close()
+
 	if resp.StatusCode != 201 {
 		return fmt.Errorf("createBot %s %s: RPC failed (code: %d", repo, branch, resp.StatusCode)
 	}
@@ -362,11 +378,13 @@ func deleteBot(repo, branch string) error {
 
 	resp, err := xcodeClient.Do(req)
 	if err != nil {
-		return fmt.Errof("deleteBot %s %s: %s")
+		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 
+	defer resp.Body.Close()
+
 	if resp.StatusCode != 204 {
-		return fmt.Errorf("deleteBot %s %s: RPC failed (code %d", repo, branch, resp.StatusCode)
+		return fmt.Errorf("deleteBot %s %s: RPC failed (code %d)", repo, branch, resp.StatusCode)
 	}
 
 	return nil
@@ -379,13 +397,14 @@ func integrateBot(repo, branch string) error {
 	}
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return fmt.Errof("integrateBot %s %s: %s", repo, branch, err)
+		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": true}`))
 	if err != nil {
-		return fmt.Errof("integrateBot %s %s: %s", repo, branch, err)
+		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		return fmt.Errorf("integrateBot %s %s: RPC failed (code: %d)", repo, branch, resp.StatusCode)
 	}
@@ -397,7 +416,7 @@ func main() {
 	xcodeClient = &http.Client{Transport: transport{creds: *xcodeCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 	bitbucketClient = &http.Client{Transport: transport{creds: *bitbucketCredentials, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: *skipVerify}}}}
 
-	http.HandleFunc("/pullRequestUpdated", handlePullRequestUpdated)
-	http.HandleFunc("/integrationUpdated", handleIntegrationUpdated)
+	http.Handle("/pullRequestUpdated", errorHandler(handlePullRequestUpdated))
+	http.Handle("/integrationUpdated", errorHandler(handleIntegrationUpdated))
 	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
