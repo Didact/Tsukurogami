@@ -21,6 +21,7 @@ import (
 
 var switchBranch = `
 #!/bin/sh
+set -x
 cd ${XCS_PRIMARY_REPO_DIR}
 git fetch
 git checkout %s
