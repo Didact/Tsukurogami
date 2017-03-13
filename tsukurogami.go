@@ -252,28 +252,28 @@ func getBot(name string) (*Bot, error) {
 
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getBot: %s", name, err)
 	}
 
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
 	resp, err := xcodeClient.Get(botsURL.String())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errof("getBot: %s", err)
 	}
 	if resp.Body == nil {
-		return nil, errors.New("no response")
+		return nil, fmt.Errorf("getBot: no response from server")
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getBot: %s")
 	}
 
 	err = json.Unmarshal(body, &botList)
 
 	if botList.Count == 0 {
-		return nil, errors.New("no bots")
+		return nil, errors.New("getBot: no bots")
 	}
 
 	var b *Bot
@@ -285,7 +285,7 @@ func getBot(name string) (*Bot, error) {
 	}
 
 	if b == nil {
-		return nil, errors.New("couldn't find template bot")
+		return nil, fmt.Errof("getBot: couldn't find bot named %s", name)
 	}
 
 	return b, nil
@@ -299,13 +299,13 @@ func createBot(repo, branch string) error {
 
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
 	templateBot, err := getBot(templateName)
 	if err != nil {
-		return err
+		return fmt.Errof("createBot %s %s: %s", repo, branch, err)
 	}
 
 	id := templateBot.ID
@@ -329,17 +329,18 @@ func createBot(repo, branch string) error {
 	templateBot.ID = ""
 
 	newJSON, err := json.Marshal(templateBot)
-
 	if err != nil {
-		return err
+		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 
 	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
 	if err != nil {
-		return err
+		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 	}
 
-	_ = resp
+	if resp.StatusCode != 201 {
+		return fmt.Errorf("createBot %s %s: RPC failed (code: %d", repo, branch, resp.StatusCode)
+	}
 
 	return nil
 }
@@ -347,25 +348,25 @@ func createBot(repo, branch string) error {
 func deleteBot(repo, branch string) error {
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 	b, err := getBot(repo + "." + branch)
 	if err != nil {
-		return err
+		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", botsURL.String(), b.ID), nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 	}
 
 	resp, err := xcodeClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errof("deleteBot %s %s: %s")
 	}
 
 	if resp.StatusCode != 204 {
-		return errors.New("failed to delete")
+		return fmt.Errorf("deleteBot %s %s: RPC failed (code %d", repo, branch, resp.StatusCode)
 	}
 
 	return nil
@@ -374,18 +375,20 @@ func deleteBot(repo, branch string) error {
 func integrateBot(repo, branch string) error {
 	bot, err := getBot(repo + "." + branch)
 	if err != nil {
-		return err
+		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 	}
 	botsURL, err := url.Parse(*xcodeURL)
 	if err != nil {
-		return err
+		return fmt.Errof("integrateBot %s %s: %s", repo, branch, err)
 	}
 	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 	resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), bot.ID), "application/json", strings.NewReader(`{"shouldClean": true}`))
 	if err != nil {
-		return err
+		return fmt.Errof("integrateBot %s %s: %s", repo, branch, err)
 	}
-	fmt.Println(resp.StatusCode)
+	if resp.StatusCode != 201 {
+		return fmt.Errorf("integrateBot %s %s: RPC failed (code: %d)", repo, branch, resp.StatusCode)
+	}
 	return nil
 }
 
