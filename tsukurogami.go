@@ -336,6 +336,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	url := &url.URL{}
+	*url = *config.BitbucketURL.URL
 
 	url.Path = path.Join(path.Join(config.BitbucketURL.Path, "rest/build-status/1.0/commits/"), commit[0])
 	resp, err := bitbucketClient.Post(url.String(), "application/json", bytes.NewReader(b))
