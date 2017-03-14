@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,14 +37,55 @@ cd ${XCS_PRIMARY_REPO_DIR}
 curl "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
 `
 
+type URL struct {
+	// embedded because an alias requires too much casting IMO
+	*url.URL
+}
+
+func (u URL) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
+
+func (u *URL) UnmarshalJSON(b []byte) error {
+	var s string
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		return err
+	}
+	u2, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	u.URL = u2
+	return nil
+}
+
+func (u *URL) String() string {
+	if u == nil || u.URL == nil {
+		return ""
+	}
+	return u.URL.String()
+}
+
+func (u *URL) Set(s string) error {
+	u2, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	u.URL = u2
+	return nil
+}
+
 var config struct {
-	XcodeURL             string `json:"xcodeURL"`
-	BitbucketURL         string `json:"bitbucketURL"`
+	XcodeURL             URL    `json:"xcodeURL"`
+	BitbucketURL         URL    `json:"bitbucketURL"`
 	XcodeCredentials     string `json:"xcodeCredentials"`
 	BitbucketCredentials string `json:"bitbucketCredentials"`
 	Port                 int    `json:"port"`
 	SkipVerify           bool   `json:"skipVerify"`
 }
+
+var myIP string
 
 var xcodeClient *http.Client
 var bitbucketClient *http.Client
@@ -240,6 +282,12 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 			w.WriteHeader(500)
 		}
 	}()
+
+	// unlike curl, http doesn't know what to do without a protocol
+	if config.BitbucketURL.Scheme == "" {
+		config.BitbucketURL.Scheme = "http"
+	}
+
 	commit, ok := r.URL.Query()["commit"]
 	if !ok || len(commit) < 1 {
 		return fmt.Errorf(`%s no "commit" parameter`, r.URL)
@@ -286,11 +334,9 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("handleIntegrationUpdated: %s", err)
 	}
 
-	url, err := url.Parse(config.BitbucketURL)
-	if err != nil {
-		return fmt.Errorf("handleIntegrationUpdated: %s", err)
-	}
-	url.Path = path.Join(path.Join(url.Path, "rest/build-status/1.0/commits/"), commit[0])
+	url := &url.URL{}
+
+	url.Path = path.Join(path.Join(config.BitbucketURL.Path, "rest/build-status/1.0/commits/"), commit[0])
 	resp, err := bitbucketClient.Post(url.String(), "application/json", bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("handleIntegrationUpdated: %s", err)
@@ -306,12 +352,9 @@ func getBots() ([]Bot, error) {
 		Results []Bot `json:"results"`
 	}
 
-	botsURL, err := url.Parse(config.XcodeURL)
-	if err != nil {
-		return nil, fmt.Errorf("getBot: %s", err)
-	}
+	botsURL := &url.URL{}
 
-	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
+	botsURL.Path = path.Join(path.Join(config.XcodeURL.Path, "api"), "bots")
 
 	resp, err := xcodeClient.Get(botsURL.String())
 	if err != nil {
@@ -369,11 +412,6 @@ func getBotNamed(name string) (*Bot, error) {
 }
 
 func createBot(repo, branch string) error {
-	botsURL, err := url.Parse(config.XcodeURL)
-	if err != nil {
-		return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
-	}
-	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
 
 	templateBots, err := getBotsWhere(func(b *Bot) bool {
 		r, ok := b.Config.envVars["TSUKUROGAMI_REPO_TEMPLATE"].(string)
@@ -394,8 +432,8 @@ func createBot(repo, branch string) error {
 
 		id := templateBot.ID
 
-		prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "inprogress")}
-		postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, config.XcodeURL, config.Port, "${XCS_INTEGRATION_RESULT}")}
+		prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, myIP, config.Port, "inprogress")}
+		postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, myIP, config.Port, "${XCS_INTEGRATION_RESULT}")}
 		postPoke.Conditions.OnWarnings = true
 		postPoke.Conditions.OnSuccess = true
 		postPoke.Conditions.OnFailingTests = true
@@ -420,7 +458,7 @@ func createBot(repo, branch string) error {
 			return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 		}
 
-		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", botsURL.String(), id), "application/json", bytes.NewReader(newJSON))
+		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/duplicate", config.XcodeURL.String(), id), "application/json", bytes.NewReader(newJSON))
 		if err != nil {
 			return fmt.Errorf("createBot %s %s: %s", repo, branch, err)
 		}
@@ -436,12 +474,6 @@ func createBot(repo, branch string) error {
 }
 
 func deleteBot(repo, branch string) error {
-	botsURL, err := url.Parse(config.XcodeURL)
-	if err != nil {
-		return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
-	}
-	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
-
 	bs, err := getBotsWhere(func(b *Bot) bool {
 		if r, ok := b.Config.envVars["TSUKUROGAMI_REPO"].(string); !ok || (strings.ToLower(r) != strings.ToLower(repo)) {
 			return false
@@ -461,7 +493,7 @@ func deleteBot(repo, branch string) error {
 	}
 
 	for _, b := range bs {
-		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", botsURL.String(), b.ID), nil)
+		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", config.XcodeURL.String(), b.ID), nil)
 		if err != nil {
 			return fmt.Errorf("deleteBot %s %s: %s", repo, branch, err)
 		}
@@ -499,15 +531,9 @@ func integrateBot(repo, branch string) error {
 		return fmt.Errorf("integrateBot %s %s: no bots found", repo, branch)
 	}
 
-	botsURL, err := url.Parse(config.XcodeURL)
-	if err != nil {
-		return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
-	}
-	botsURL.Path = path.Join(path.Join(botsURL.Path, "api"), "bots")
-
 	for _, b := range bs {
 		// downloading sources takes forever with shouldClean: true imo
-		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", botsURL.String(), b.ID), "application/json", strings.NewReader(`{"shouldClean": false}`))
+		resp, err := xcodeClient.Post(fmt.Sprintf("%s/%s/integrations", config.XcodeURL.String(), b.ID), "application/json", strings.NewReader(`{"shouldClean": false}`))
 		if err != nil {
 			return fmt.Errorf("integrateBot %s %s: %s", repo, branch, err)
 		}
@@ -519,11 +545,24 @@ func integrateBot(repo, branch string) error {
 	return nil
 }
 
+func getPreferredIP(hostport string) string {
+	// expensive, I know, but seems more accurate than looping through net.Interfaces()
+	conn, err := net.Dial("tcp", hostport)
+	if err != nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
+	if err != nil {
+		return ""
+	}
+	return host
+}
+
 func verifyConfig() bool {
 	switch {
-	case config.XcodeURL == "":
+	case config.XcodeURL.String() == "":
 		fallthrough
-	case config.BitbucketURL == "":
+	case config.BitbucketURL.String() == "":
 		fallthrough
 	case config.XcodeCredentials == "":
 		fallthrough
@@ -538,8 +577,12 @@ func verifyConfig() bool {
 var configPath string
 
 func init() {
-	flag.StringVar(&config.XcodeURL, "xcodeURL", "https://localhost:20343", "The url of your xcode server")
-	flag.StringVar(&config.BitbucketURL, "bitbucketURL", "", "The url of your bitbucket server")
+	// default value
+	u, _ := url.Parse("https://localhost:20343/api/bots")
+	config.XcodeURL = URL{u}
+
+	flag.Var(&config.XcodeURL, "xcodeURL", "The url of your xcode server")
+	flag.Var(&config.BitbucketURL, "bitbucketURL", "The url of your bitbucket server")
 	flag.StringVar(&config.XcodeCredentials, "xcodeCredentials", "", "The credentials for your xcode server. username:password")
 	flag.StringVar(&config.BitbucketCredentials, "bitbucketCredentials", "", "The credentials for your bitbucket server. username:password")
 	flag.IntVar(&config.Port, "port", 4444, "The port to listen on")
@@ -570,6 +613,11 @@ func main() {
 	if !verifyConfig() {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	myIP = getPreferredIP(config.XcodeURL.Host)
+	if myIP == "" {
+		myIP = "localhost" // not much else we can do
 	}
 
 	xcodeClient = &http.Client{Transport: newTransport(config.XcodeCredentials, config.SkipVerify)}
