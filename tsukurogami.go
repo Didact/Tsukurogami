@@ -34,7 +34,7 @@ var pokeStatus = `
 set -x
 cd ${XCS_PRIMARY_REPO_DIR}
 # TODO: Replace IP
-curl "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
+curl -g "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
 `
 
 type URL struct {
@@ -352,11 +352,7 @@ func getBots() ([]Bot, error) {
 		Results []Bot `json:"results"`
 	}
 
-	botsURL := &url.URL{}
-
-	botsURL.Path = path.Join(path.Join(config.XcodeURL.Path, "api"), "bots")
-
-	resp, err := xcodeClient.Get(botsURL.String())
+	resp, err := xcodeClient.Get(config.XcodeURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("getBot: %s", err)
 	}
@@ -551,9 +547,19 @@ func getPreferredIP(hostport string) string {
 	if err != nil {
 		return ""
 	}
-	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
+	addr, ok := conn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		// wtf
+		return ""
+	}
+
+	host, _, err := net.SplitHostPort(addr.String())
 	if err != nil {
 		return ""
+	}
+	if addr.IP.To4() == nil {
+		// ipv6 address
+		return "[" + host + "]"
 	}
 	return host
 }
