@@ -486,7 +486,7 @@ func deleteBot(repo, branch string) error {
 	}
 
 	if len(bs) < 1 {
-		return fmt.Errorf("deleteBot %s %s: no bots found", repo, err)
+		return fmt.Errorf("deleteBot %s: no bots found", repo)
 	}
 
 	for _, b := range bs {
