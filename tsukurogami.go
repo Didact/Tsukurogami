@@ -25,7 +25,7 @@ var switchBranch = `
 set -x
 cd ${XCS_PRIMARY_REPO_DIR}
 git fetch
-git checkout %s
+git checkout "%s"
 git pull # for good measure
 git merge --no-ff --no-merge master
 `
