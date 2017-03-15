@@ -34,7 +34,7 @@ var pokeStatus = `
 #!/bin/sh
 set -x
 cd ${XCS_PRIMARY_REPO_DIR}
-curl -g "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
+curl -g "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&botID=${XCS_BOT_ID}&integration=${XCS_INTEGRATION_NUMBER}&integrationID=${XCS_INTEGRATION_ID}&status=%s"
 `
 
 type URL struct {
@@ -301,9 +301,19 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf(`%s no "bot" parameter`, r.URL)
 	}
 
+	botID, ok := r.URL.Query()["botID"]
+	if !ok || len(botID) < 1 {
+		return fmt.Errorf(`%s no "botID" parameter`, r.URL)
+	}
+
 	integration, ok := r.URL.Query()["integration"]
 	if !ok || len(integration) < 1 {
 		return fmt.Errorf(`%s no "integration" parameter`, r.URL)
+	}
+
+	integrationID, ok := r.URL.Query()["integrationID"]
+	if !ok || len(integrationID) < 1 {
+		return fmt.Errorf(`%s no "integrationID" parameter`, r.URL)
 	}
 
 	var state struct {
@@ -327,7 +337,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	}
 	state.Key = bot[0]
 	state.Name = state.Key + ":" + integration[0]
-	state.URL = "http://example.com/" // dunno what to do with this yet
+	state.URL = fmt.Sprintf("xcbot://%s/botID/%s/integrationID/%s", config.XcodeURL.Hostname(), botID[0], integrationID[0])
 
 	b, err := json.Marshal(state)
 	if err != nil {
