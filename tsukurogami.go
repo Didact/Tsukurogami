@@ -445,6 +445,7 @@ func createBot(repo, branch string) error {
 		}, templateBot.Config.triggers...)
 		templateBot.Config.envVars["TSUKUROGAMI_REPO"] = repo
 		templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
+		delete(templateBot.Config.envVars, "TSUKUROGAMI_REPO_TEMPLATE")
 		templateBot.Name = templateBot.Name + "." + branch
 		templateBot.ID = ""
 
