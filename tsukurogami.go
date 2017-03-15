@@ -105,11 +105,36 @@ func (t transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.Transport.RoundTrip(req)
 }
 
+type TriggerPhase int
+
+const (
+	Before TriggerPhase = iota + 1
+	After
+)
+
+type TriggerType int
+
+const (
+	Script TriggerType = iota + 1
+	TEmail
+)
+
+type Condition uint8
+
+const (
+	OnAnalyzerWarnings Condition = 1 << iota
+	OnBuildErrors
+	OnFailingTests
+	OnSuccess
+	OnWarnings
+	Always Condition = 0xFF
+)
+
 type Trigger struct {
-	Phase              int              `json:"phase"`
+	Phase              TriggerPhase     `json:"phase"`
 	Body               string           `json:"scriptBody,omitempty"`
 	Name               string           `json:"name"`
-	Type               int              `json:"type"`
+	Type               TriggerType      `json:"type"`
 	EmailConfiguration *json.RawMessage `json:"emailConfiguration,omitempty"`
 	Conditions         struct {
 		OnAnalyzerWarnings bool `json:"onAnalyzerWarnings"`
@@ -119,6 +144,28 @@ type Trigger struct {
 		OnWarnings         bool `json:"onWarnings"`
 		Status             int  `json:"status"`
 	} `json:"conditions,omitempty"`
+}
+
+func NewPreScript(name, body string) Trigger {
+	return Trigger{
+		Phase: Before,
+		Type:  Script,
+		Body:  body,
+	}
+}
+
+func NewPostScript(name, body string, conditions Condition) Trigger {
+	t := Trigger{
+		Phase: After,
+		Type:  Script,
+		Body:  body,
+	}
+	t.Conditions.OnAnalyzerWarnings = (conditions&OnAnalyzerWarnings == 1)
+	t.Conditions.OnBuildErrors = (conditions&OnBuildErrors == 1)
+	t.Conditions.OnFailingTests = (conditions&OnFailingTests == 1)
+	t.Conditions.OnSuccess = (conditions&OnSuccess == 1)
+	t.Conditions.OnWarnings = (conditions&OnWarnings == 1)
+	return t
 }
 
 type Bot struct {
@@ -435,24 +482,17 @@ func createBot(repo, branch string) error {
 		return fmt.Errorf("createBot %s %s: no templates for repo", repo, branch)
 	}
 
+	tsukurogamiScripts := []Trigger{
+		NewPreScript("Switch Branch", fmt.Sprintf(switchBranch, branch)),
+		NewPreScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "inprogress")),
+		NewPostScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "${XCS_INTEGRATION_RESULT}"), Always),
+	}
+
 	for _, templateBot := range templateBots {
 
 		id := templateBot.ID
 
-		prePoke := Trigger{Type: 1, Phase: 1, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, myIP, config.Port, "inprogress")}
-		postPoke := Trigger{Type: 1, Phase: 2, Name: "Update Status", Body: fmt.Sprintf(pokeStatus, myIP, config.Port, "${XCS_INTEGRATION_RESULT}")}
-		postPoke.Conditions.OnWarnings = true
-		postPoke.Conditions.OnSuccess = true
-		postPoke.Conditions.OnFailingTests = true
-		postPoke.Conditions.OnBuildErrors = true
-		postPoke.Conditions.OnWarnings = true
-		postPoke.Conditions.OnAnalyzerWarnings = true
-
-		templateBot.Config.triggers = append([]Trigger{
-			Trigger{Type: 1, Phase: 1, Name: "Switch Branch", Body: fmt.Sprintf(switchBranch, branch)},
-			prePoke,
-			postPoke,
-		}, templateBot.Config.triggers...)
+		templateBot.Config.triggers = append(tsukurogamiScripts, templateBot.Config.triggers...)
 		templateBot.Config.envVars["TSUKUROGAMI_REPO"] = repo
 		templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 		delete(templateBot.Config.envVars, "TSUKUROGAMI_REPO_TEMPLATE")
