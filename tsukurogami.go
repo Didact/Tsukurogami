@@ -27,14 +27,13 @@ cd ${XCS_PRIMARY_REPO_DIR}
 git fetch
 git checkout "%s"
 git pull # for good measure
-git merge --no-ff --no-merge master
+git merge --no-ff --no-commit master
 `
 
 var pokeStatus = `
 #!/bin/sh
 set -x
 cd ${XCS_PRIMARY_REPO_DIR}
-git reset --hard
 curl -g "%s:%d/integrationUpdated?commit=$(git rev-parse HEAD | tr -d \n)&bot=${XCS_BOT_NAME}&integration=${XCS_INTEGRATION_NUMBER}&status=%s"
 `
 
