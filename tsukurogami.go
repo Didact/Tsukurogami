@@ -464,7 +464,7 @@ func createBot(repo, branch string) error {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != 201 {
-			return fmt.Errorf("createBot %s %s: RPC failed (code: %d", repo, branch, resp.StatusCode)
+			return fmt.Errorf("createBot %s %s: RPC failed (code: %d)", repo, branch, resp.StatusCode)
 		}
 	}
 
