@@ -297,7 +297,7 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		log.Printf("successfully updated bot %s %s\n", repo[0], branch[0])
-	case "closed", "declined":
+	case "merged", "declined":
 		log.Printf("deleting bot %s %s\n", repo[0], branch[0])
 		if err := deleteBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
