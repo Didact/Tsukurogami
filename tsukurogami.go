@@ -384,7 +384,7 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	}
 	state.Key = bot[0]
 	state.Name = state.Key + ":" + integration[0]
-	state.URL = fmt.Sprintf("xcbot://%s/botID/%s/integrationID/%s", config.XcodeURL.Hostname(), botID[0], integrationID[0])
+	state.URL = fmt.Sprintf("https://%s/", config.XcodeURL.Hostname())
 
 	b, err := json.Marshal(state)
 	if err != nil {
