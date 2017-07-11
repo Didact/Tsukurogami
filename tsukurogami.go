@@ -313,7 +313,7 @@ func handlePullRequestUpdated(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		log.Printf("successfully deleted bot %s %s\n", repo[0], branch[0])
-	case "rescoped_from":
+	case "rescoped_from", "rescoped_to":
 		log.Printf("updating bot %s %s", repo[0], branch[0])
 		if err := integrateBot(repo[0], branch[0]); err != nil {
 			w.WriteHeader(500)
