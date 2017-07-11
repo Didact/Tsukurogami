@@ -30,6 +30,15 @@ git pull # for good measure
 git merge --no-ff --no-commit master
 `
 
+var resetBranch = `
+#!/bin/sh
+set -x
+cd ${XCS_PRIMARY_REPO_DIR}
+git reset --hard
+git checkout master
+git pull
+`
+
 var pokeStatus = `
 #!/bin/sh
 set -x
@@ -486,6 +495,7 @@ func createBot(repo, branch string) error {
 		NewPreScript("Switch Branch", fmt.Sprintf(switchBranch, branch)),
 		NewPreScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "inprogress")),
 		NewPostScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "${XCS_INTEGRATION_RESULT}"), Always),
+		NewPostScript("Reset Branch", resetBranch, Always),
 	}
 
 	for _, templateBot := range templateBots {
