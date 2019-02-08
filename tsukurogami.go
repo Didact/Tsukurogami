@@ -160,6 +160,7 @@ func NewPreScript(name, body string) Trigger {
 		Phase: Before,
 		Type:  Script,
 		Body:  body,
+		Name:  name,
 	}
 }
 
@@ -168,6 +169,7 @@ func NewPostScript(name, body string, conditions Condition) Trigger {
 		Phase: After,
 		Type:  Script,
 		Body:  body,
+		Name:  name,
 	}
 	t.Conditions.OnAnalyzerWarnings = (conditions&OnAnalyzerWarnings == 1)
 	t.Conditions.OnBuildErrors = (conditions&OnBuildErrors == 1)
