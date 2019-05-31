@@ -27,7 +27,7 @@ cd ${XCS_PRIMARY_REPO_DIR}
 git fetch
 git checkout "%s"
 git pull # for good measure
-git merge --no-ff --no-commit master
+git merge --no-ff --no-commit origin/master
 `
 
 var resetBranch = `
@@ -494,9 +494,12 @@ func createBot(repo, branch string) error {
 		return fmt.Errorf("createBot %s %s: no templates for repo", repo, branch)
 	}
 
-	tsukurogamiScripts := []Trigger{
+	tsukurogamiPreScripts := []Trigger{
 		NewPreScript("Switch Branch", fmt.Sprintf(switchBranch, branch)),
 		NewPreScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "inprogress")),
+	}
+
+	tsukurogamiPostScripts := []Trigger{
 		NewPostScript("Update Status", fmt.Sprintf(pokeStatus, myIP, config.Port, "${XCS_INTEGRATION_RESULT}"), Always),
 		NewPostScript("Reset Branch", resetBranch, Always),
 	}
@@ -505,7 +508,10 @@ func createBot(repo, branch string) error {
 
 		id := templateBot.ID
 
-		templateBot.Config.triggers = append(tsukurogamiScripts, templateBot.Config.triggers...)
+		triggers := append(tsukurogamiPreScripts, templateBot.Config.triggers...)
+		triggers = append(triggers, tsukurogamiPostScripts...)
+
+		templateBot.Config.triggers = triggers
 		templateBot.Config.envVars["TSUKUROGAMI_REPO"] = repo
 		templateBot.Config.envVars["TSUKUROGAMI_BRANCH"] = branch
 		delete(templateBot.Config.envVars, "TSUKUROGAMI_REPO_TEMPLATE")
