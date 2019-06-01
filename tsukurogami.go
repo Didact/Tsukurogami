@@ -416,6 +416,86 @@ func handleIntegrationUpdated(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func handleIntegrateBot(w http.ResponseWriter, r *http.Request) error {
+	success := false
+	defer func() {
+		if success {
+			w.WriteHeader(200)
+		} else {
+			w.WriteHeader(500)
+		}
+	}()
+
+	repo, ok := r.URL.Query()["repo"]
+	if !ok  || len(repo) < 1 {
+		return fmt.Errorf(`%s no "repo" parameter`, r.URL)
+	}
+
+	branch, ok := r.URL.Query()["branch"]
+	if !ok || len(branch) < 1 {
+		return fmt.Errorf(`%s no "branch" parameter`, r.URL)
+	}
+
+	if config.BitbucketURL.Scheme == "" {
+		config.BitbucketURL.Scheme = "http"
+	}
+
+	log.Printf("integrating bot %s %s\n", repo[0], branch[0])
+	err := integrateBot(repo[0], branch[0])
+	if err != nil {
+		w.WriteHeader(500)
+		return err
+	}
+	log.Printf("successfully integrated bot %s %s\n", repo[0], branch[0])
+
+	success = true
+	return nil
+}
+
+func handleRecreateBot(w http.ResponseWriter, r *http.Request) error {
+	success := false
+	defer func() {
+		if success {
+			w.WriteHeader(200)
+		} else {
+			w.WriteHeader(500)
+		}
+	}()
+
+	repo, ok := r.URL.Query()["repo"]
+	if !ok  || len(repo) < 1 {
+		return fmt.Errorf(`%s no "repo" parameter`, r.URL)
+	}
+
+	branch, ok := r.URL.Query()["branch"]
+	if !ok || len(branch) < 1 {
+		return fmt.Errorf(`%s no "branch" parameter`, r.URL)
+	}
+
+	if config.BitbucketURL.Scheme == "" {
+		config.BitbucketURL.Scheme = "http"
+	}
+
+	log.Printf("recreating bot %s %s\n", repo[0], branch[0])
+	err := deleteBot(repo[0], branch[0])
+	if err != nil {
+		log.Printf("failed to delete bot %s %s, continuing: %s\n", repo[0], branch[0], err)
+	}
+	err = createBot(repo[0], branch[0])
+	if err != nil {
+		w.WriteHeader(500)
+		return err
+	}
+	err = integrateBot(repo[0], branch[0])
+	if err != nil {
+		w.WriteHeader(500)
+		return err
+	}
+	log.Printf("successfully recreated bot %s %s\n", repo[0], branch[0])
+
+	success = true
+	return nil}
+
 func getBots() ([]Bot, error) {
 	var botList struct {
 		Count   int   `json:"count"`
@@ -705,6 +785,8 @@ func main() {
 
 	http.Handle("/pullRequestUpdated", errorHandler(handlePullRequestUpdated))
 	http.Handle("/integrationUpdated", errorHandler(handleIntegrationUpdated))
+	http.Handle("/integrateBot", errorHandler(handleIntegrateBot))
+	http.Handle("/recreateBot", errorHandler(handleRecreateBot))
 	http.Handle("/logs", l)
 	log.Println(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
 }
