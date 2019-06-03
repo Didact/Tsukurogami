@@ -134,9 +134,10 @@ const (
 	OnAnalyzerWarnings Condition = 1 << iota
 	OnBuildErrors
 	OnFailingTests
-	OnSuccess
 	OnWarnings
-	Always Condition = 0xFF
+	OnSuccess
+	OnAllIssuesResolved
+	Always Condition = 0xFF & ^OnAllIssuesResolved
 )
 
 type Trigger struct {
@@ -146,12 +147,13 @@ type Trigger struct {
 	Type               TriggerType      `json:"type"`
 	EmailConfiguration *json.RawMessage `json:"emailConfiguration,omitempty"`
 	Conditions         struct {
-		OnAnalyzerWarnings bool `json:"onAnalyzerWarnings"`
-		OnBuildErrors      bool `json:"onBuildErrors"`
-		OnFailingTests     bool `json:"onFailingTests"`
-		OnSuccess          bool `json:"onSuccess"`
-		OnWarnings         bool `json:"onWarnings"`
-		Status             int  `json:"status"`
+		OnAnalyzerWarnings  bool `json:"onAnalyzerWarnings"`
+		OnBuildErrors       bool `json:"onBuildErrors"`
+		OnFailingTests      bool `json:"onFailingTests"`
+		OnSuccess           bool `json:"onSuccess"`
+		OnWarnings          bool `json:"onWarnings"`
+		OnAllIssuesResolved bool `json:"onAllIssuesResolved"`
+		Status              int  `json:"status"`
 	} `json:"conditions,omitempty"`
 }
 
@@ -171,11 +173,12 @@ func NewPostScript(name, body string, conditions Condition) Trigger {
 		Body:  body,
 		Name:  name,
 	}
-	t.Conditions.OnAnalyzerWarnings = (conditions&OnAnalyzerWarnings == 1)
-	t.Conditions.OnBuildErrors = (conditions&OnBuildErrors == 1)
-	t.Conditions.OnFailingTests = (conditions&OnFailingTests == 1)
-	t.Conditions.OnSuccess = (conditions&OnSuccess == 1)
-	t.Conditions.OnWarnings = (conditions&OnWarnings == 1)
+	t.Conditions.OnAnalyzerWarnings = (conditions&OnAnalyzerWarnings != 0)
+	t.Conditions.OnBuildErrors = (conditions&OnBuildErrors != 0)
+	t.Conditions.OnFailingTests = (conditions&OnFailingTests != 0)
+	t.Conditions.OnWarnings = (conditions&OnWarnings != 0)
+	t.Conditions.OnSuccess = (conditions&OnSuccess != 0)
+	t.Conditions.OnAllIssuesResolved = (conditions&OnAllIssuesResolved != 0)
 	return t
 }
 
@@ -427,7 +430,7 @@ func handleIntegrateBot(w http.ResponseWriter, r *http.Request) error {
 	}()
 
 	repo, ok := r.URL.Query()["repo"]
-	if !ok  || len(repo) < 1 {
+	if !ok || len(repo) < 1 {
 		return fmt.Errorf(`%s no "repo" parameter`, r.URL)
 	}
 
@@ -463,7 +466,7 @@ func handleRecreateBot(w http.ResponseWriter, r *http.Request) error {
 	}()
 
 	repo, ok := r.URL.Query()["repo"]
-	if !ok  || len(repo) < 1 {
+	if !ok || len(repo) < 1 {
 		return fmt.Errorf(`%s no "repo" parameter`, r.URL)
 	}
 
@@ -494,7 +497,8 @@ func handleRecreateBot(w http.ResponseWriter, r *http.Request) error {
 	log.Printf("successfully recreated bot %s %s\n", repo[0], branch[0])
 
 	success = true
-	return nil}
+	return nil
+}
 
 func getBots() ([]Bot, error) {
 	var botList struct {
